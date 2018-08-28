@@ -44,11 +44,15 @@ namespace Jackett.Common.Indexers
         private int _maxDailyPages = 7;
         private int _maxEpisodesListPages = 100;
         private int[] _allTvCategories = TorznabCatType.TV.SubCategories.Select(c => c.ID).ToArray();
+        private int[] _allMovieCategories = TorznabCatType.Movies.SubCategories.Select(c => c.ID).ToArray();
 
         private string _dailyUrl = "/ultimas-descargas/pg/{0}";
         private string[] _seriesLetterUrls = new string[] { "/series/letter/{0}", "/series-hd/letter/{0}" };
         private string[] _seriesVOLetterUrls = new string[] { "/series-vo/letter/{0}" };
         private string _seriesUrl = "{0}/pg/{1}";
+
+        private const int CategoriaCineAltaDefinicionHD = 1027;
+        private const string UrlBusquedaTuMejorTorrent = "http://tumejortorrent.com/buscar";
 
         public Newpct(IIndexerConfigurationService configService, WebClient wc, Logger l, IProtectionService ps)
             : base(name: "Newpct",
@@ -142,13 +146,46 @@ namespace Jackett.Common.Indexers
                 //Only tv search supported. (newpct web search is useless)
                 bool isTvSearch = query.Categories == null || query.Categories.Length == 0 ||
                     query.Categories.Any(c => _allTvCategories.Contains(c));
+
+                bool isMovieSearch = query.Categories == null || query.Categories.Length == 0 ||
+                                  query.Categories.Any(c => _allMovieCategories.Contains(c));
+
                 if (isTvSearch)
                 {
                     return await TvSearch(query);
                 }
+
+                if (isMovieSearch)
+                {
+                    return await MovieSearch(query);
+                }
             }
 
             return releases;
+        }
+
+        private async Task<IEnumerable<ReleaseInfo>> MovieSearch(TorznabQuery query)
+        {
+            var newpctReleases = new List<ReleaseInfo>();
+            
+            // Remove year from title
+
+            var movieTitle = query.SanitizedSearchTerm.Substring(0, query.SanitizedSearchTerm.LastIndexOf(" "));
+
+            var data = new List<KeyValuePair<string, string>>();
+
+            data.Add(new KeyValuePair<string, string>("pg",""));
+            data.Add(new KeyValuePair<string, string>("categoryIDR", CategoriaCineAltaDefinicionHD.ToString()));
+            data.Add(new KeyValuePair<string, string>("idioma", ""));
+            data.Add(new KeyValuePair<string, string>("calidad", ""));
+            data.Add(new KeyValuePair<string, string>("ordenar", "Fecha"));
+            data.Add(new KeyValuePair<string, string>("inon", "Descendente"));
+            data.Add(new KeyValuePair<string, string>("q", movieTitle));
+
+            var movieSearchResults = await PostDataWithCookies(UrlBusquedaTuMejorTorrent, data);
+
+
+            return newpctReleases;
         }
 
         private async Task<IEnumerable<ReleaseInfo>> TvSearch(TorznabQuery query)
