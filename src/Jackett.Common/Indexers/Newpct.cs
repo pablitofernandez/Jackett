@@ -152,12 +152,12 @@ namespace Jackett.Common.Indexers
 
                 if (isTvSearch)
                 {
-                    return await TvSearch(query);
+                    releases.AddRange(await TvSearch(query));
                 }
 
                 if (isMovieSearch)
                 {
-                    return await MovieSearch(query);
+                    releases.AddRange(await MovieSearch(query));
                 }
             }
 
@@ -183,6 +183,73 @@ namespace Jackett.Common.Indexers
             data.Add(new KeyValuePair<string, string>("q", movieTitle));
 
             var movieSearchResults = await PostDataWithCookies(UrlBusquedaTuMejorTorrent, data);
+
+            var SearchResultParser = new HtmlParser();
+            var doc = SearchResultParser.Parse(movieSearchResults.Content);
+
+            try
+            {
+                var rows = doc.QuerySelectorAll(".buscar-list li a");
+                foreach (var anchor in rows)
+                {
+                    var h2 = anchor.QuerySelector("h2");
+                    if (h2 != null)
+                    {
+                        var releaseTitle = "";//h2.TextContent;
+                        var releaseUrlInfo = anchor.GetAttribute("href");
+                        var releaseInfo = await RequestStringWithCookies(releaseUrlInfo);
+
+                        var releaseInfoParser = new HtmlParser();
+                        var releaseDoc = releaseInfoParser.Parse(releaseInfo.Content);
+
+                        var titleElements = releaseDoc.QuerySelectorAll(".breadcrumbs li");
+
+                        query.
+
+                        if (titleElements.Length > 2)
+                        {
+                            releaseTitle = titleElements[2].FirstElementChild.TextContent;
+                        }
+                        //Console.WriteLine(titleElements);
+                        if (releaseInfo.Content.IndexOf("window.location.href") == -1)
+                        {
+                            continue;
+                        }
+                        var torrentLink = releaseInfo.Content.Substring(releaseInfo.Content.IndexOf("window.location.href") + "window.location.href".Length);
+                        torrentLink = torrentLink.Substring(0, torrentLink.IndexOf(";"));
+                        torrentLink = torrentLink.Replace("=", "").Replace("\"", "");
+                        torrentLink = torrentLink.Trim();
+                        var torrentUri = new Uri(torrentLink);
+
+                        var releaseSizeResults = releaseDoc.QuerySelectorAll(".imp");
+                        var size = releaseSizeResults.First().TextContent;
+                        size = size.Substring(size.IndexOf("Size: ") + "Size: ".Length);
+
+                        var sizeValue = ReleaseInfo.GetBytes(size);
+
+                        //var magnitude = size.Substring(size.IndexOf(" ") + 1);
+                        //var sizeValue = size.Substring(0, size.IndexOf(" "));
+
+                        //Console.WriteLine(size);
+
+                        newpctReleases.Add(new ReleaseInfo()
+                        {
+                            Seeders = 1,
+                            Peers = 1,
+                            Title = releaseTitle,
+                            Size = sizeValue,
+                            Link = torrentUri,
+                            Guid = torrentUri,
+                            Category = _allMovieCategories,
+                        });
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                OnParseError(movieSearchResults.Content, ex);
+            }
 
 
             return newpctReleases;
