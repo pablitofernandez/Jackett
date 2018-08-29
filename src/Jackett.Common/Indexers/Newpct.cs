@@ -171,6 +171,7 @@ namespace Jackett.Common.Indexers
             // Remove year from title
 
             var movieTitle = query.SanitizedSearchTerm.Substring(0, query.SanitizedSearchTerm.LastIndexOf(" "));
+            var movieYear = query.SanitizedSearchTerm.Substring(query.SanitizedSearchTerm.LastIndexOf(" ")).Trim();
 
             var data = new List<KeyValuePair<string, string>>();
 
@@ -180,7 +181,7 @@ namespace Jackett.Common.Indexers
             data.Add(new KeyValuePair<string, string>("calidad", ""));
             data.Add(new KeyValuePair<string, string>("ordenar", "Fecha"));
             data.Add(new KeyValuePair<string, string>("inon", "Descendente"));
-            data.Add(new KeyValuePair<string, string>("q", movieTitle));
+            data.Add(new KeyValuePair<string, string>("q", "\"" + movieTitle + "\""));
 
             var movieSearchResults = await PostDataWithCookies(UrlBusquedaTuMejorTorrent, data);
 
@@ -195,6 +196,7 @@ namespace Jackett.Common.Indexers
                     var h2 = anchor.QuerySelector("h2");
                     if (h2 != null)
                     {
+                        var fullTitle = h2.TextContent;
                         var releaseTitle = "";//h2.TextContent;
                         var releaseUrlInfo = anchor.GetAttribute("href");
                         var releaseInfo = await RequestStringWithCookies(releaseUrlInfo);
@@ -204,12 +206,38 @@ namespace Jackett.Common.Indexers
 
                         var titleElements = releaseDoc.QuerySelectorAll(".breadcrumbs li");
 
-                        query.
-
                         if (titleElements.Length > 2)
                         {
                             releaseTitle = titleElements[2].FirstElementChild.TextContent;
                         }
+
+                        releaseTitle += " (" + movieYear + ")";
+
+                        var quality = "";
+                        if (fullTitle.ToLower().Contains("microhd") && fullTitle.ToLower().Contains("1080p"))
+                        {
+                            quality = "Bluray MicroHD 1080p";
+                        }
+                        else if (fullTitle.ToLower().Contains("1080p"))
+                        {
+                            quality = "Bluray 1080p";
+                        }
+                        else if (fullTitle.ToLower().Contains("2160p"))
+                        {
+                            quality = "Bluray 2160p";
+                        }
+
+                        if (fullTitle.ToLower().Contains("hdr"))
+                        {
+                            quality += " HDR";
+                        }
+
+                        releaseTitle += " " + quality + " Spanish";
+
+                        fullTitle = fullTitle.Substring(fullTitle.IndexOf("["));
+
+                        releaseTitle += " " + fullTitle;
+
                         //Console.WriteLine(titleElements);
                         if (releaseInfo.Content.IndexOf("window.location.href") == -1)
                         {
@@ -223,14 +251,19 @@ namespace Jackett.Common.Indexers
 
                         var releaseSizeResults = releaseDoc.QuerySelectorAll(".imp");
                         var size = releaseSizeResults.First().TextContent;
+                        var publishDate = DateTime.Now;
+                        try
+                        {
+                            var date = releaseSizeResults[1].TextContent;
+                            date = date.Substring(size.IndexOf("Fecha: ") + "Fecha: ".Length);
+                            date = date.Trim();
+                            publishDate = DateTime.ParseExact(date, "dd-MM-yyyy", CultureInfo.InvariantCulture);
+                        }
+                        catch { }
+
                         size = size.Substring(size.IndexOf("Size: ") + "Size: ".Length);
 
                         var sizeValue = ReleaseInfo.GetBytes(size);
-
-                        //var magnitude = size.Substring(size.IndexOf(" ") + 1);
-                        //var sizeValue = size.Substring(0, size.IndexOf(" "));
-
-                        //Console.WriteLine(size);
 
                         newpctReleases.Add(new ReleaseInfo()
                         {
@@ -241,6 +274,7 @@ namespace Jackett.Common.Indexers
                             Link = torrentUri,
                             Guid = torrentUri,
                             Category = _allMovieCategories,
+                            PublishDate = publishDate
                         });
 
                     }
